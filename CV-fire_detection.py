@@ -3,9 +3,36 @@
 # Saf, Annie, Devlin - Curtin University 2026
 # Read CV-README.md for set up advice
 
+# Camera → YOLO → Python → USB Serial → Arduino 2
+
 import cv2
 from ultralytics import YOLO
+import serial  # to be able to send to Arduino through USB
+import time
 
+#### ARDUNIO
+# Connect to Perception Arduino through USB serial.
+# CHANGE "COM3" to whatever COM port Arduino uses.
+# The baud rate MUST match Serial.begin(115200) on Arduino.
+try:
+    arduino = serial.Serial(
+        port="COM3",
+        baudrate=115200,
+        timeout=1
+    )
+
+    # Arduino normally resets when the serial connection opens, so we giving it time
+    time.sleep(2)
+    print("Connected to Perception Arduino")
+
+except serial.SerialException:
+    # if Arduino can ot be found, continue to run
+    arduino = None
+    print("Arduino NOT connected - running CV only")
+
+
+
+#### COMPUTER VISION
 
 # 1. Load trained fire detection model
 model = YOLO("best.pt")
@@ -63,13 +90,24 @@ while True:
 
                 fire_pixels = width * height
 
-                # Output
+                # Outputs
+                # Laptop printed output
                 print(
                     f"FIRE | "
                     f"Confidence: {confidence:.2f} | "
                     f"Pixels: {fire_pixels} | "
                     f"Centre: ({centre_x}, {centre_y})"
                 )
+                # Send to Arduino output
+                message = (
+                    f"FIRE,"
+                    f"{confidence:.2f},"
+                    f"{centre_x},"
+                    f"{centre_y},"
+                    f"{fire_pixels}\n"  # newline is end of message
+                )
+                if arduino is not None:    
+                    arduino.write(message.encode())
 
                 # Draw detection box
                 cv2.rectangle(
@@ -102,7 +140,12 @@ while True:
 
     # 6. No fire
     if not fire_detected:
+        # Laptop printed output
         print("No fire")
+
+        if arduino is not None:    
+            # Send to Arduino output
+            arduino.write(b"NO_FIRE\n")
 
 
     # 7. Show webcam
@@ -118,3 +161,5 @@ while True:
 
 cap.release()
 cv2.destroyAllWindows()
+if arduino is not None:    
+    ardunio.close()  # closes serial connection
