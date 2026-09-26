@@ -129,27 +129,6 @@ void loop() {
   if (state == VERIFYING) {
     verifyTarget();
   }
-
-// For when Arduino 1 is not connected (Test Switch is TRUE)
-  if (TEST_MODE && Serial.available() > 0) {
-    String message = Serial.readStringUntil('\n');
-    message.trim();
-    // Fake commands from Arduino 1
-    if (message == "HOT_WORK") {
-      commandFromA1 = CMD_HOT_WORK;
-    }
-    else if (message == "VERIFY_TARGET") {
-      commandFromA1 = CMD_VERIFY_TARGET;
-    }
-    else if (message == "STANDBY") {
-      commandFromA1 = CMD_STANDBY;
-    }
-    // Otherwise assume message came from CV
-    else {
-      readCVMessage(message);
-    }
-  }
-
 }
 
 /////////////COMMANDS FROM MISSION CONTROLLER - ARDUINO 1 ////////////

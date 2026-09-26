@@ -214,11 +214,6 @@ while True:
                 # Send to Arduino output
                 arduino.write(b"NO_FIRE\n")
 
-    # # 7. CHECK FOR RESPONSE FROM ARDUINO - If Arduino has sent something back, read it and print it.
-    # if arduino is not None and arduino.in_waiting > 0:
-    #     response = arduino.readline().decode().strip()
-    #     print(f"Arduino: {response}")
-
     # 8. Show webcam
     cv2.imshow(
         "FireWatch CV",
