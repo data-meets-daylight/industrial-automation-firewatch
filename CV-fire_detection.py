@@ -3,13 +3,14 @@
 # Saf, Annie, Devlin - Curtin University 2026
 # Read CV-README.md for set up advice
 
-# Camera → YOLO → Python → USB Serial → Arduino 2
+
+# Arduino 2 → USB Serial → Python → YOLO → Camera 
 
 import cv2
 from ultralytics import YOLO
 import serial  # to be able to send to Arduino through USB
 import time
-import threading # allows typing test commands while CV runs
+import threading # allows typing test commands while CV runs ()
 
 #### ARDUNIO
 # Connect to Perception Arduino through USB serial.
@@ -31,7 +32,7 @@ except serial.SerialException:
     arduino = None
     print("Arduino NOT connected - running CV only")
 
-
+# COMMENT OUT WHEN A1 IS UP
 # TEST MODE (when not connected to A1) - manually send commands that would normally come from Arduino 1
 def manual_commands():
 
@@ -80,14 +81,36 @@ while True:
 
         if response == "START_CV":
             cv_active = True
-            print("CV monitoring started")
+            print("\n==============================")
+            print("STATE: MONITORING")
+            print("CV ACTIVE - looking for fire")
+            print("==============================\n")
+
+# COMMENT OUT WHEN A1 IS UP
+        elif response == "POSSIBLE_FIRE_DETECTED":
+            print("\n==============================")
+            print(f"STATE: POSSIBLE FIRE at {centre_x}, {centre_y}")
+            print("Target sent to Mission Control")
+            print("Waiting for robot to aim")
+            print("Type VERIFY_TARGET when ready")
+            print("==============================\n")
+
+        elif response == "VERIFY_CV":
+            print("\n==============================")
+            print("STATE: VERIFYING")
+            print("Getting fresh CV + thermal reading")
+            print("==============================\n")
+
+        elif response == "FIRE_NOT_CONFIRMED":
+            print("\n==============================")
+            print("STATE: FIRE NOT CONFIRMED")
+            print("Returning to monitoring")
+            print("==============================\n")
 
         elif response == "STOP_CV":
             cv_active = False
             print("CV monitoring stopped")
 
-        elif response == "VERIFY_CV":
-            print("Fresh CV reading requested")
 
 
     ret, frame = cap.read()
@@ -134,14 +157,14 @@ while True:
 
                     fire_pixels = width * height
 
-                    # Outputs
+# COMMENT BACK IN WHEN A1 IS UP                    # Outputs
                     # Laptop printed output
-                    print(
-                        f"FIRE | "
-                        f"Confidence: {confidence:.2f} | "
-                        f"Pixels: {fire_pixels} | "
-                        f"Centre: ({centre_x}, {centre_y})"
-                    )
+                    # print(
+                    #     f"FIRE | "
+                    #     f"Confidence: {confidence:.2f} | "
+                    #     f"Pixels: {fire_pixels} | "
+                    #     f"Centre: ({centre_x}, {centre_y})"
+                    # )
                     # Send to Arduino output
                     message = (
                         f"FIRE,"
@@ -181,11 +204,11 @@ while True:
                         (0, 0, 255),
                         2
                     )
-
+# COMMENT BACK IN WHEN A1 IS UP
         # 6. No fire
         if not fire_detected:
             # Laptop printed output
-            print("No fire")
+            # print("No fire")
 
             if arduino is not None:    
                 # Send to Arduino output
