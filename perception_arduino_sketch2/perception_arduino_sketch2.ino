@@ -262,7 +262,7 @@ void readCVMessage(String message) {
 ////////////// THERMAL VERIFICATION + SENSOR FUSION/////////////
 void verifyTarget() {
 
-  Serial.println("DEBUG 1: Entered verifyTarget()");
+  // Serial.println("DEBUG 1: Entered verifyTarget()");
   
   if (!thermalSensorOK) {    // Cannot perform sensor fusion without IR sensor
     fireConfidence = 0.0;   // if IR is 0
