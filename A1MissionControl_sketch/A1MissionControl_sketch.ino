@@ -10,9 +10,11 @@ settup + wireing:
 
 -SDA to A4, SCL to A5
 -GND shared all boards on bus (for i3c to work needs common ground ref not just sda and scl)
--beacon led is PIN 8 
--alarm piezo is PIN 9
--pump relay is  PIN 7
+-
+-yellow beacon led is PIN 9
+-red beacon led is PIN  8
+-alarm piezo is PIN 
+-pump relay is  PIN 
 
 serial monitor commands
 
@@ -86,9 +88,10 @@ SystemState currentState = STANDBY;
 
 
 // PINS
-const int PIN_PUMP   = 7;  // pump relay control input only - the relay switches the 12V pump
-const int PIN_BEACON = 8;  // beacon led through a resistor to GND
-const int PIN_ALARM  = 9;  // piezo
+const int PIN_PUMP = 7;   // pump relay control
+const int PIN_RED_LED = 8;
+const int PIN_YELLOW_LED = 9;
+const int PIN_ALARM  = 10;  // piezo
 
 // use millis instead of delay so loop never freezes/gets stuck
 // That means A1 can always react to an emergency stop even mid-suppression
@@ -141,11 +144,10 @@ void setup() {
   Wire.begin(); // no address given = A1 is the I2C controller
   Wire.setWireTimeout(25000, true);  // if the bus locks up, for many resons like a loose wire ect, give up after 25 ms, instead of freezing the whole Arduino forever :(
 
-  pinMode(PIN_PUMP, OUTPUT);
-  pinMode(PIN_BEACON, OUTPUT);
-  pinMode(PIN_ALARM, OUTPUT);
-  digitalWrite(PIN_PUMP, LOW);
-  digitalWrite(PIN_BEACON, LOW);
+  pinMode(PIN_RED_LED, OUTPUT);
+  pinMode(PIN_YELLOW_LED, OUTPUT);
+  digitalWrite(PIN_RED_LED, LOW);
+  digitalWrite(PIN_YELLOW_LED, LOW);
 
   delay(1000); //give A2 and A3 a second to wake up and say hello
 
@@ -647,20 +649,39 @@ bool stateTimedOut() {
 }
 
 void updateBeaconAndAlarm() {
-  // Beacon: flash without delay()
-  if (beaconFlashing) {
-    if (millis() - lastBeaconToggle >= BEACON_FLASH_INTERVAL) {
-      lastBeaconToggle = millis();
-      beaconOn = !beaconOn;
-      digitalWrite(PIN_BEACON, beaconOn);
-    }
-  } else if (beaconOn) {
-    beaconOn = false;
-    digitalWrite(PIN_BEACON, LOW);
+  // flashOn swaps between true and false every 250 ms.
+  // One shared "clock" for all flashing - no extra timers needed.
+  bool flashOn = (millis() / 250) % 2;
+
+  // Set both LEDs to match whatever state we're in
+  switch (currentState) {
+    case STANDBY:  // system off
+      case FAULT:
+      digitalWrite(PIN_YELLOW_LED, LOW);
+      digitalWrite(PIN_RED_LED, LOW);
+      break;
+
+    case HOT_WORK:   // armed and watching
+      digitalWrite(PIN_YELLOW_LED, HIGH);  // solid yellow
+      digitalWrite(PIN_RED_LED, LOW);
+      break;
+
+    case TARGETING:  // possible fire, robot moving
+    case VERIFYING:     // checking with thermal
+      digitalWrite(PIN_YELLOW_LED, flashOn);  // flashing yellow
+      digitalWrite(PIN_RED_LED, LOW);
+      break;
+
+    case FIRE_CONFIRMED:// real fire
+    case SUPPRESSING:   // water on
+    case RECHECK: // checking if it's out
+      digitalWrite(PIN_YELLOW_LED, flashOn);  // flashing yellow
+      digitalWrite(PIN_RED_LED, flashOn);     // flashing red
+
+      break;
   }
 
   // Alarm: only call tone()/noTone() when it needs to CHANGE
-  // (calling tone() every loop restarts it and it sounds glitchy)
   if (alarmTone != alarmTonePlaying) {
     if (alarmTone == 0) noTone(PIN_ALARM);
     else tone(PIN_ALARM, alarmTone);
