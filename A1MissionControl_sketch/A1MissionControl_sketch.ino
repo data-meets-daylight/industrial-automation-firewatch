@@ -30,8 +30,8 @@ b = (self test) pretend that A3 is ready
 
 // I2C addresses (matching other boards wire.begin(x))
 const byte A2_ADDR = 8; // perception (saf) using Wire.begin(8) 
-const byte A3_ADDR = 8; // robotics/pump (devlan) BUT CHANGE BACK TO 9 8 is only for one arduno test
-
+const byte A3_ADDR = 9; // robotics/pump (devlan) BUT CHANGE BACK TO 9 8 is only for one arduno test
+const bool SIMULATE_A3 = true; // testing purposes - simulating A3 , true when testing
 
 
 // commands sent TO A2 - matching safs sketch
@@ -131,7 +131,8 @@ bool recheckVerifySent = false;
 //just for testing
 bool testA2Confirmed = false; // set by 'a' key
 bool testA3Ready = false;  // set by 'b' key
-
+byte simA3LastCommand = CMD_A3_STANDBY;  // the last command "A3" got
+unsigned long simA3AimStart = 0;         //  when TARGET arrived
 
 // SETTING UP
 
@@ -355,6 +356,7 @@ void runStateMachine() {
         changeState(TARGETING);
       }
       break;
+      
     // target in correct priority order
     case TARGETING:
       if (testA3Ready) { changeState(VERIFYING); break; } // for testing.
@@ -453,6 +455,10 @@ void runStateMachine() {
 // I2C SENDING
 
 bool sendCommand(byte addr, byte cmd) {
+  if (SIMULATE_A3 && cmd >= CMD_A3_STANDBY) {  // A3 commands are 10-13
+    simulateA3Command(cmd);
+    return true;                               // pretend A3 heard it
+  }
   Wire.beginTransmission(addr);
   Wire.write(cmd);
   byte result = Wire.endTransmission();  // 0 = success, anything else = nobody answered
@@ -476,6 +482,16 @@ bool sendCommand(byte addr, byte cmd) {
 
 // Sends TARGET + X (2 bytes) + Y (2 bytes) = 5 bytes to A3
 bool sendTargetToA3() {
+  if (SIMULATE_A3) {
+    Serial.print(F("  [SIM] X="));
+    Serial.print(targetX);
+    Serial.print(F(" Y="));
+    Serial.print(targetY);
+    Serial.print(F("  "));
+    simulateA3Command(CMD_A3_TARGET);
+    return true;
+  }
+
   Wire.beginTransmission(A3_ADDR);
   Wire.write(CMD_A3_TARGET);
   Wire.write((byte*)&targetX, sizeof(targetX));
@@ -548,15 +564,21 @@ bool readA2() {
 }
 
 // Asks A3 for its 1-byte status. Returns false if A3 didn't answer.
+// Asks A3 for its 1-byte status. Returns false if A3 didn't answer.
 bool readA3() {
-  byte received = Wire.requestFrom(A3_ADDR, (byte)1);
-  if (received == 0) {
-    replyMissed(A3_ADDR);
-    return false;
+  byte newStatus;
+
+  if (SIMULATE_A3) {
+    newStatus = simulatedA3Status();   // pretend A3 answered
+  } else {
+    byte received = Wire.requestFrom(A3_ADDR, (byte)1);
+    if (received == 0) {
+      replyMissed(A3_ADDR);
+      return false;
+    }
+    newStatus = Wire.read();
   }
   missedReplies = 0;
-
-  byte newStatus = Wire.read();
 
   if (newStatus != a3Status || PRINT_EVERY_POLL) {
     Serial.print(F("  A3 -> A1: "));
@@ -588,6 +610,32 @@ void replyMissed(byte addr) {
 
 
 // extra to help with alarm system and keeping track of timers
+
+// SIMULATED A3 (testing only)
+// Remembers the last command sent to A3 and prints it like a real send
+void simulateA3Command(byte cmd) {
+  simA3LastCommand = cmd;
+  if (cmd == CMD_A3_TARGET) simA3AimStart = millis();
+  Serial.print(F("  [SIM] A1 -> A3: "));
+  Serial.print(cmd);
+  Serial.print(F(" ("));
+  Serial.print(commandName(cmd));
+  Serial.println(F(")"));
+}
+
+// Works out what a real A3 would answer, based on the last command.
+byte simulatedA3Status() {
+  switch (simA3LastCommand) {
+    case CMD_A3_TARGET:
+      if (millis() - simA3AimStart >= 2000) return A3_READY;  // "aiming" takes 2 s
+      return A3_PARKED;
+    case CMD_A3_SUPPRESS_START: return A3_SUPPRESSING;
+    case CMD_A3_SUPPRESS_STOP:  return A3_SUPPRESSION_COMPLETE;
+    default:                    return A3_PARKED;
+  }
+}
+
+
 bool timeToPoll() {
   if (millis() - lastPollTime < POLL_INTERVAL) return false;
   lastPollTime = millis();

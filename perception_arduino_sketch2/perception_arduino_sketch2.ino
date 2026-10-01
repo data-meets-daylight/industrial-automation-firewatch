@@ -11,7 +11,8 @@
 
 
 // test mode switch for when Mission Control Arduino 1 is not connected
-const bool TEST_MODE = true;
+const bool TEST_MODE = false;
+
 
 // add MLX90614 infrared temp sensor
 #include <Wire.h>
@@ -83,13 +84,14 @@ void setup() {
 
   // COMMS WITH IR TEMP SENSOR
   if (!mlx.begin()) {  // exception handling for infrared temp sensor
-    Serial.println("ERROR: MLX90614 sensor not found");
-    while (1);
+    Serial.println("WARNING: MLX90614 sensor not found - continuing without thermal");  // exception for when cant find IR temp sensor
+      thermalSensorOK = false;
+    }
+    else {
+        thermalSensorOK = true;
+        Serial.println("IR temperature sensor connected");
   }
-  thermalSensorOK = true;
-  Serial.println("IR temperature sensor connected");
 }
-
 
 //////////////////////MAIN LOOP//////////////////////////////////
 
@@ -259,8 +261,15 @@ void readCVMessage(String message) {
 
 ////////////// THERMAL VERIFICATION + SENSOR FUSION/////////////
 void verifyTarget() {
+
+  Serial.println("DEBUG 1: Entered verifyTarget()");
+  
   if (!thermalSensorOK) {    // Cannot perform sensor fusion without IR sensor
-    fireConfidence = 0.0;
+    fireConfidence = 0.0;   // if IR is 0
+    state = MONITORING;
+    cvFireDetected = false;
+    cvConfidence = 0.0;   
+    Serial.println("FIRE_NOT_CONFIRMED");
     return;
   }
 
@@ -268,6 +277,11 @@ void verifyTarget() {
   ambientTemp = mlx.readAmbientTempC();  // temperature of the MLX90614 sensor chip itself
   objectTemp = mlx.readObjectTempC(); // the temperature of the surface/object it is pointing at
   tempDifference = objectTemp - ambientTemp; // how hot the possible fire is
+  Serial.print("THERMAL | Ambient: ");
+  Serial.print(ambientTemp);
+  Serial.print(" C | Object: ");
+  Serial.print(objectTemp);
+  Serial.println(" C");
 
 
 ///// to change later to better calculation////
@@ -310,7 +324,11 @@ void verifyTarget() {
   }
   else {
     state = MONITORING;
+    cvFireDetected = false;
+    cvConfidence = 0.0;
     Serial.println("FIRE_NOT_CONFIRMED");
+
+    delay(1000); // adding delay because camera detecting fire faster than A1 polling
   }
 }
 

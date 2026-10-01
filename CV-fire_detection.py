@@ -10,7 +10,7 @@ import cv2
 from ultralytics import YOLO
 import serial  # to be able to send to Arduino through USB
 import time
-import threading # allows typing test commands while CV runs ()
+# import threading # allows typing test commands while CV runs ()
 
 #### ARDUNIO
 # Connect to Perception Arduino through USB serial.
@@ -34,16 +34,16 @@ except serial.SerialException:
 
 # COMMENT OUT WHEN A1 IS UP
 # TEST MODE (when not connected to A1) - manually send commands that would normally come from Arduino 1
-def manual_commands():
+# def manual_commands():
 
-    while True:
-        command = input("> ").strip().upper()
-        if command in ["HOT_WORK", "VERIFY_TARGET", "STANDBY"]:
-            if arduino is not None:
-                arduino.write((command + "\n").encode())
-                print(f"TEST COMMAND SENT: {command}")
-        else:
-            print("Unknown command. Use HOT_WORK, VERIFY_TARGET or STANDBY")
+#     while True:
+#         command = input("> ").strip().upper()
+#         if command in ["HOT_WORK", "VERIFY_TARGET", "STANDBY"]:
+#             if arduino is not None:
+#                 arduino.write((command + "\n").encode())
+#                 print(f"TEST COMMAND SENT: {command}")
+#         else:
+#             print("Unknown command. Use HOT_WORK, VERIFY_TARGET or STANDBY")
 
 
 
@@ -64,12 +64,12 @@ if not cap.isOpened():
 cv_active = False
 
 # Start separate thread so Bash can accept test commands while CV keeps running
-if arduino is not None:
-    command_thread = threading.Thread(
-        target=manual_commands,
-        daemon=True
-    )
-    command_thread.start()
+# if arduino is not None:
+#     command_thread = threading.Thread(
+#         target=manual_commands,
+#         daemon=True
+#     )
+#     command_thread.start()
 
 # 3. Read webcam continuously
 while True:
@@ -88,12 +88,16 @@ while True:
 
 # COMMENT OUT WHEN A1 IS UP
         elif response == "POSSIBLE_FIRE_DETECTED":
-            print("\n==============================")
-            print(f"STATE: POSSIBLE FIRE at {centre_x}, {centre_y}")
-            print("Target sent to Mission Control")
-            print("Waiting for robot to aim")
-            print("Type VERIFY_TARGET when ready")
-            print("==============================\n")
+            print("\n========================================")
+            print("CV: POSSIBLE FIRE DETECTED")
+            print(f"  Confidence: {confidence:.0%}")
+            print(f"  Centre:     ({centre_x}, {centre_y})")
+            print(f"  Area:       {fire_pixels} px")
+            print()
+            print("A2 -> A1: POSSIBLE FIRE")
+            print("  Target coordinates sent to Mission Control")
+            print("  Waiting for robot to aim")
+            print("========================================\n")
 
         elif response == "VERIFY_CV":
             print("\n==============================")
