@@ -105,6 +105,12 @@ enum SystemState {
   HOT_WORK,
   TARGETING,
   VERIFYING,
+
+  // NEW:
+  // A2 stays stopped while A3 physically returns to centre.
+  // HOT_WORK cannot restart until A3 reports PARKED.
+  RETURNING_TO_PARK,
+
   FIRE_CONFIRMED,
   SUPPRESSING,
   RECHECK,
@@ -139,16 +145,9 @@ const unsigned long BUTTON_DEBOUNCE = 300;
 // TIMING
 // ============================================================
 
-const unsigned long POLL_INTERVAL        = 500;
-const unsigned long SUPPRESSION_TIME     = 20000;
-const unsigned long STEP_TIMEOUT         = 10000;
-
-// NEW:
-// After a possible fire fails verification,
-// ignore new POSSIBLE_FIRE detections for 10 seconds.
-const unsigned long FALSE_ALARM_COOLDOWN = 10000;
-
-unsigned long ignorePossibleFireUntil = 0;
+const unsigned long POLL_INTERVAL    = 500;
+const unsigned long SUPPRESSION_TIME = 20000;
+const unsigned long STEP_TIMEOUT     = 10000;
 
 const byte MAX_MISSED_REPLIES = 3;
 
@@ -415,9 +414,6 @@ void changeState(SystemState newState) {
       alarmTone = 0;
       suppressionCycles = 0;
 
-      // Clear any old false-alarm cooldown
-      ignorePossibleFireUntil = 0;
-
       sendCommand(A3_ADDR, CMD_A3_STANDBY);
       sendCommand(A2_ADDR, CMD_A2_STANDBY);
 
@@ -431,6 +427,7 @@ void changeState(SystemState newState) {
       alarmTone = 0;
       suppressionCycles = 0;
 
+      // A3 should already be parked before we enter HOT_WORK.
       sendCommand(A3_ADDR, CMD_A3_STANDBY);
 
       if (!sendCommand(A2_ADDR, CMD_A2_HOTWORK)) {
@@ -472,6 +469,45 @@ void changeState(SystemState newState) {
       if (!sendCommand(A2_ADDR, CMD_A2_VERIFY_TARGET)) {
 
         enterFault(F("A2 did not accept VERIFY_TARGET"));
+        return;
+
+      }
+
+      break;
+
+
+    // --------------------------------------------------------
+    // NEW: RETURNING TO PARK
+    // --------------------------------------------------------
+
+    case RETURNING_TO_PARK:
+
+      /*
+        IMPORTANT:
+
+        Stop A2 computer vision BEFORE telling A3 to return.
+
+        A2 must not detect and pass another possible fire to A1
+        while the camera/robot is still moving back to centre.
+
+        A1 will remain in RETURNING_TO_PARK until A3 physically
+        reaches centre and reports A3_PARKED.
+      */
+
+      Serial.println(
+        F("  Stopping CV while A3 returns to centre")
+      );
+
+      if (!sendCommand(A2_ADDR, CMD_A2_STANDBY)) {
+
+        enterFault(F("A2 did not accept STANDBY"));
+        return;
+
+      }
+
+      if (!sendCommand(A3_ADDR, CMD_A3_STANDBY)) {
+
+        enterFault(F("A3 did not accept STANDBY"));
         return;
 
       }
@@ -528,6 +564,7 @@ void changeState(SystemState newState) {
       alarmTone = FAULT_ALARM_TONE;
 
       sendCommand(A3_ADDR, CMD_A3_STANDBY);
+      sendCommand(A2_ADDR, CMD_A2_STANDBY);
 
       Serial.println(F("  Pump OFF. Check wiring, then press r."));
 
@@ -580,14 +617,8 @@ void runStateMachine() {
 
       if (a2Status == A2_POSSIBLE_FIRE) {
 
-        // NEW:
-        // Ignore repeated possible-fire detections during
-        // the false-alarm cooldown.
-        if (millis() >= ignorePossibleFireUntil) {
+        changeState(TARGETING);
 
-          changeState(TARGETING);
-
-        }
       }
 
       break;
@@ -642,21 +673,15 @@ void runStateMachine() {
 
       }
 
-      // A2 has a maximum of 10 seconds to finish verification.
-      // If it never gives a final answer, return to HOT WORK
-      // instead of entering FAULT.
+      // If A2 fails to finish verification, stop CV and
+      // return the robot to centre before monitoring again.
       if (stateTimedOut()) {
 
         Serial.println(
-          F("  A2 did not confirm fire within 10 seconds - returning to HOT WORK")
+          F("  A2 did not confirm fire within 10 seconds")
         );
 
-        // Also use the cooldown so the robot does not
-        // immediately chase the same detection again.
-        ignorePossibleFireUntil =
-          millis() + FALSE_ALARM_COOLDOWN;
-
-        changeState(HOT_WORK);
+        changeState(RETURNING_TO_PARK);
 
         break;
       }
@@ -676,26 +701,57 @@ void runStateMachine() {
       }
 
 
-      // No heat / fire not confirmed
+      // Fire NOT confirmed
       else if (a2Status == A2_NO_FIRE) {
 
         Serial.println(
-          F("  Fire NOT confirmed - 5 second detection cooldown")
+          F("  Fire NOT confirmed - stopping CV and returning robot to centre")
         );
 
-        // Start the 5-second cooldown BEFORE returning to HOT WORK.
-        ignorePossibleFireUntil =
-          millis() + FALSE_ALARM_COOLDOWN;
+        changeState(RETURNING_TO_PARK);
+
+      }
+
+      break;
+
+
+    // --------------------------------------------------------
+    // NEW: RETURNING TO PARK
+    // --------------------------------------------------------
+
+    case RETURNING_TO_PARK:
+
+      /*
+        A2 is currently in STANDBY, so CV is not allowed to
+        generate another possible-fire event.
+
+        Wait here until A3 tells us that the servos have
+        physically reached the parked position.
+      */
+
+      if (stateTimedOut()) {
+
+        enterFault(F("A3 did not return to PARKED"));
+        break;
+
+      }
+
+      if (!timeToPoll())
+        break;
+
+      if (!readA3())
+        break;
+
+
+      if (a3Status == A3_PARKED) {
+
+        Serial.println(
+          F("  A3 physically PARKED - restarting fire monitoring")
+        );
 
         changeState(HOT_WORK);
 
       }
-
-      // If A2 is still VERIFYING or POSSIBLE_FIRE,
-      // remain in VERIFYING until:
-      // - FIRE_CONFIRMED
-      // - NO_FIRE
-      // - 10 second timeout
 
       break;
 
@@ -817,9 +873,12 @@ void runStateMachine() {
 
       else if (a2Status == A2_NO_FIRE) {
 
-        Serial.println(F("  FIRE OUT - back to Hot Work monitoring"));
+        Serial.println(
+          F("  FIRE OUT - returning robot to centre")
+        );
 
-        changeState(HOT_WORK);
+        // Do not restart HOT_WORK until the camera is centred.
+        changeState(RETURNING_TO_PARK);
 
       }
 
@@ -1189,6 +1248,7 @@ void updateBeaconAndAlarm() {
 
     case TARGETING:
     case VERIFYING:
+    case RETURNING_TO_PARK:
 
       digitalWrite(PIN_YELLOW_LED, flashOn);
       digitalWrite(PIN_RED_LED, LOW);
@@ -1340,6 +1400,9 @@ const __FlashStringHelper* stateName(SystemState s) {
 
     case VERIFYING:
       return F("VERIFYING");
+
+    case RETURNING_TO_PARK:
+      return F("RETURNING_TO_PARK");
 
     case FIRE_CONFIRMED:
       return F("FIRE_CONFIRMED");

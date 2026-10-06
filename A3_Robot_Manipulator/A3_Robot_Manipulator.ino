@@ -31,7 +31,7 @@
   - Do not change limits to 0-180 without physically checking mount.
   - Servo movement is limited to 1 degree per step to prevent
     sudden/violent movement.
-  - PAN and TILT angles now correspond directly to the physical
+  - PAN and TILT angles correspond directly to the physical
     servo angles established during testing.
 
   ============================================================
@@ -520,7 +520,20 @@ void PARKED() {
     (currentXAngle != targetXAngle) ||
     (currentYAngle != targetYAngle);
 
-  currentStatus = STATUS_PARKED;
+
+  /*
+    IMPORTANT PARKING CHANGE:
+
+    Do NOT set currentStatus = STATUS_PARKED here.
+
+    The robot may still physically be moving back to centre.
+
+    STATUS_PARKED will instead be set in updateServos()
+    after PAN and TILT have actually reached the parked angles.
+
+    This allows A1 to keep A2/CV stopped until A3 has really
+    finished parking.
+  */
 
   hasTargetedFire = false;
 
@@ -541,6 +554,12 @@ void PARKED() {
       PIN_LASER,
       LOW
     );
+
+    /*
+      If no movement is required, we are already physically
+      centred, so it is safe to report PARKED immediately.
+    */
+    currentStatus = STATUS_PARKED;
 
   }
 }
@@ -810,6 +829,17 @@ void updateServos() {
       }
 
       else {
+
+        /*
+          This is now the point where A3 reports PARKED.
+
+          Because we've reached this section, both servos have
+          physically reached their target angles.
+
+          When returning home those targets are:
+          PAN = 100
+          TILT = 155
+        */
 
         currentStatus =
           STATUS_PARKED;
