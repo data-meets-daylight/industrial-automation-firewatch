@@ -21,7 +21,7 @@ const bool TEST_MODE = false;
 // Constants
 const byte A2_ADDRESS = 8; // I2C address for Arduino 2
 const float CV_TRIGGER_THRESHOLD = 0.70; // CV confidence required before investigating target
-const float TEMP_DIFFERENCE_THRESHOLD = 50.0; // in degC. How hot is potential fire
+const float TEMP_DIFFERENCE_THRESHOLD = 20.0; // in degC. How hot is potential fire
 
 // numeric codes that Arduino 2 uses to tell Arduino 1 what is happening
 const byte STATUS_NO_FIRE = 0;          // A2 has not detected a fire

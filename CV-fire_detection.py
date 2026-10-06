@@ -121,7 +121,9 @@ while True:
     if not ret:
         print("Could not read frame")
         break
-
+    
+    # height, width = frame.shape[:2]
+    # print(f"CAMERA FRAME: {width} x {height}")
 
     # 4. Run trained model
     # Only run fire detection while HOT_WORK mode is active
@@ -154,6 +156,11 @@ while True:
                     # Calculate centre coordinates
                     centre_x = int((x1 + x2) / 2)
                     centre_y = int((y1 + y2) / 2)
+
+                    # Flip coordinates because the physical pan/tilt mount
+                    # moves opposite to the camera image coordinates
+                    centre_x = 640 - centre_x
+                    centre_y = 480 - centre_y
 
                     # Approximate fire pixel area
                     width = x2 - x1
