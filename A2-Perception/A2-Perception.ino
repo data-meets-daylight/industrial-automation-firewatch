@@ -55,59 +55,59 @@ SEQ 11 - Resume HOT WORK monitoring
 =================================================================
 */
 
-// test mode switch for when Mission Control Arduino 1 is not connected
+// TEST MODE
+// Allows A2 to be tested without A1 connected.
 const bool TEST_MODE = false;
 
-
-// add MLX90614 infrared temp sensor
+// LIBRARIES
 #include <Wire.h>
 #include <Adafruit_MLX90614.h>
 
-// Constants
+// A2 I2C ADDRESS
 const byte A2_ADDRESS = 8; // I2C address for Arduino 2
+
+// FIRE DETECTION THRESHOLDS
 const float CV_TRIGGER_THRESHOLD = 0.70; // CV confidence required before investigating target
 const float TEMP_DIFFERENCE_THRESHOLD = 20.0; // in degC. How hot is potential fire
 
-// numeric codes that Arduino 2 uses to tell Arduino 1 what is happening
+// STATUS SENT TO A1
 const byte STATUS_NO_FIRE = 0;          // A2 has not detected a fire
 const byte STATUS_POSSIBLE_FIRE = 1;    // CV has detected a possible fire
 const byte STATUS_FIRE_CONFIRMED = 2;   // CV + thermal sensing have confirmed fire
 const byte STATUS_VERIFYING = 3;        // A2 is currently verifying the target
 const byte STATUS_STANDBY = 4;          // A2 is in standby mode
 
-
-// VARIABLES
-
-// from CV-fire_detection.py:
+// COMPUTER VISION DATA
+// Received from CV-fire_detection.py
 float cvConfidence = 0.0; // confidence reported by CV-fire_detection.py
 int centreX = 0; // x-coord of centre of fire bounding box reported by CV-fire_detection.py
 int centreY = 0; // y-coord of centre of fire bounding box reported by CV-fire_detection.py
 long firePixels = 0; // area of fire bounding box (proxy for how large fire is) reported by CV-fire_detection.py
 bool cvFireDetected = false; // saves whether CV-fire_detection.py currently detects fire
 
-// from infrared temp sensor
+// THERMAL SENSOR DATA
 Adafruit_MLX90614 mlx = Adafruit_MLX90614(); // create MLX90614 infrared temperature sensor object
 bool thermalSensorOK = false; // stores whether infrared temperature sensor connected successfully
 float ambientTemp = 0.0; // temperature of the surrounding environment measured by IR sensor
 float objectTemp = 0.0; // temperature of object in front of IR sensor
 float tempDifference = 0.0; // difference between object temperature and ambient temperature
 
-// Firewatch states
+// PERCEPTION STATES
 enum PerceptionState {
-  STANDBY,
-  MONITORING,
-  POSSIBLE_FIRE,
-  VERIFYING,
-  FIRE_CONFIRMED
+  STANDBY,        // SEQ 01 - System startup / STANDBY
+  MONITORING,     // SEQ 03 - Monitor for fire
+  POSSIBLE_FIRE,  // SEQ 04 - Possible fire detected
+  VERIFYING,      // SEQ 06 - Verify fire with CV + thermal
+  FIRE_CONFIRMED  // SEQ 07B - Fire CONFIRMED
 };
 
 PerceptionState state = STANDBY;
 
-// Sensor fusion
+// SENSOR FUSION
 float thermalConfidence = 0.0;
 float fireConfidence = 0.0;
 
-// I2C Communications - Commands from A1
+// COMMANDS RECEIVED FROM A1
 volatile byte commandFromA1 = 0; // Command most recently received from Arduino 1
 const byte CMD_HOT_WORK = 1; // HOT_WORK
 const byte CMD_VERIFY_TARGET = 2; // VERIFY_TARGET
@@ -115,19 +115,21 @@ const byte CMD_STANDBY = 3; // STAND_BY
 
 
 
-/////////////////////SET UP////////////////////////////////
-
+// SETUP
+// SEQ 01 - SYSTEM STARTUP / STANDBY
+// Runs once when A2 is powered on or reset.
 void setup() {
-  //USB SERIAL COMMS WITH CV PYTHON (AND WEBCAM)
+
+  // Start USB Serial communication with Python CV (and Webcam)
   Serial.begin(115200); // must be same baud rate as CV-fire_detection.py
   Serial.println("PERCEPTION_READY"); // tell CV-fire_detection.py arduino is here
 
-  // I2C COMMS WITH ARDUINO 1
+  // Start A2 with I2C comms (with A1)
   Wire.begin(A2_ADDRESS);
   Wire.onReceive(receiveFromA1);
   Wire.onRequest(sendToA1);
 
-  // COMMS WITH IR TEMP SENSOR
+  // Start MLX90614 thermal sensor
   if (!mlx.begin()) {  // exception handling for infrared temp sensor
     Serial.println("WARNING: MLX90614 sensor not found - continuing without thermal");  // exception for when cant find IR temp sensor
       thermalSensorOK = false;
@@ -138,10 +140,9 @@ void setup() {
   }
 }
 
-//////////////////////MAIN LOOP//////////////////////////////////
-
+// MAIN LOOP
+// Runs continuously and manages A1 commands, CV data and fire detection.
 void loop() {
-
   // 1. Process command received from A1
   processA1Command(); 
 
@@ -162,32 +163,35 @@ void loop() {
   }
 
 
-  // 3. Monitoring (CV looking for possible fire)
+// SEQ 03 - MONITOR FOR FIRE
+  // Check whether CV has detected a fire above the trigger threshold.
   if (state == MONITORING) {
 
-    if (
-      cvFireDetected && cvConfidence >= CV_TRIGGER_THRESHOLD) {
+// SEQ 04 - POSSIBLE FIRE DETECTED
+    if (cvFireDetected && cvConfidence >= CV_TRIGGER_THRESHOLD) {
       state = POSSIBLE_FIRE; // this sends coordinates to A1 to get A3 to move robot to centre over fire
       Serial.println("POSSIBLE_FIRE_DETECTED");
     }
   }
 
-  // 4. Verify target - A1 puts A2 into this state after A3 finishes aiming robot at target
+// SEQ 06 - VERIFY FIRE WITH CV + THERMAL
+  // A1 enters this state after A3 has aimed at the possible fire.
   if (state == VERIFYING) {
     verifyTarget();
   }
 }
 
-/////////////COMMANDS FROM MISSION CONTROLLER - ARDUINO 1 ////////////
-
+// COMMANDS FROM A1
+// Processes the most recent command received from Mission Control.
 void processA1Command() {
   byte command;
+  // Safely copy command received by I2C interrupt
   noInterrupts();
   command = commandFromA1;
   commandFromA1 = 0;
   interrupts();
 
-  // HOT_WORK command (When Operator selects Hot Work mode)
+// SEQ 02 + 03 - START HOT WORK / MONITOR FOR FIRE
     if (command == CMD_HOT_WORK) {
     state = MONITORING;
     cvFireDetected = false;
@@ -196,22 +200,28 @@ void processA1Command() {
     Serial.println("START_CV");  // Tell Python to start CV monitoring
   }
 
-  // VERIFY_TARGET command (When A3 Robotics finished centring on possible fire target)
+// SEQ 06 - VERIFY FIRE
+  // A3 has finished aiming at the possible fire target.
     else if (command == CMD_VERIFY_TARGET) {
     state = VERIFYING;
+
     // Tell Python we need a fresh CV result
     Serial.println("VERIFY_CV");
   }
 
-  // STANDBY command (before and after work)
+// SEQ 01 / 10 - STANDBY
+  // Stop CV when the system is inactive or A3 is returning to park.
   else if (command == CMD_STANDBY) {
     state = STANDBY;
     cvFireDetected = false;
     cvConfidence = 0.0;
     Serial.println("STOP_CV");
   }
-
 }
+
+
+// RECEIVE COMMAND FROM A1
+// Called automatically when A1 sends data to A2 over I2C.
 void receiveFromA1(int numberOfBytes) { // to receive from A1
   if (Wire.available()) {
     commandFromA1 = Wire.read();
@@ -219,55 +229,52 @@ void receiveFromA1(int numberOfBytes) { // to receive from A1
 }
 
 
-///////////////////////SEND DATA TO MISSION CONTROLLER - ARDUINO 1//////////////
-
+// SEND DATA TO A1
+// Called when A1 requests A2's current status over I2C.
 void sendToA1() {
-
-// Possible fire detected - send CV target information to A1
+// SEQ 04 - POSSIBLE FIRE DETECTED
+  // Send target coordinates and CV confidence to A1.
   if (state == POSSIBLE_FIRE) {
-    Wire.write(STATUS_POSSIBLE_FIRE); 
-
-    Wire.write((byte*)&centreX, sizeof(centreX));   // Send X coordinate as 2 bytes
-    Wire.write((byte*)&centreY, sizeof(centreY));     // Send Y coordinate as 2 bytes
-    Wire.write((byte*)&cvConfidence, sizeof(cvConfidence));     // Send CV confidence as 4 bytes
+    Wire.write(STATUS_POSSIBLE_FIRE);
+    Wire.write((byte*)&centreX, sizeof(centreX));
+    Wire.write((byte*)&centreY, sizeof(centreY));
+    Wire.write((byte*)&cvConfidence, sizeof(cvConfidence));
   }
-
-
-// Fire confirmed after robotics move and thermal sensor with CV sensor fusion
+// SEQ 07B - FIRE CONFIRMED
+  // Send final sensor-fusion fire confidence to A1.
   else if (state == FIRE_CONFIRMED) {
     Wire.write(STATUS_FIRE_CONFIRMED);
-    Wire.write((byte*)&fireConfidence, sizeof(fireConfidence)); // Send final fire confidence
+    Wire.write((byte*)&fireConfidence, sizeof(fireConfidence));
   }
-
-// Not sure if needed but for time it takes to calculate CV + Thermal confidence 
+// SEQ 06 - VERIFYING
+  // Tell A1 that A2 is still verifying the target.
   else if (state == VERIFYING) {
     Wire.write(STATUS_VERIFYING);
   }
-
-// Normal monitoring
+// SEQ 03 - MONITORING
+  // No possible fire currently detected.
   else if (state == MONITORING) {
     Wire.write(STATUS_NO_FIRE);
   }
-
-// Standby - pretty much off
+// SEQ 01 / 10 - STANDBY
   else {
     Wire.write(STATUS_STANDBY);
   }
 }
 
 
-
-/////////// READ COMPUTER VISION MESSAGE/////////////
+// READ COMPUTER VISION MESSAGE
+// Parses fire detection data received from CV-fire_detection.py.
 void readCVMessage(String message) {
-
-  // NO FIRE
+  // No fire currently detected by CV
   if (message == "NO_FIRE") {
     cvFireDetected = false;
     cvConfidence = 0.0;
     return;
   }
 
-  // FIRE DETECTED  // FIRE,0.91,360,250,24000
+  // Fire detected by CV
+  // Expected format: FIRE,0.91,360,250,24000
   if (message.startsWith("FIRE,")) {
     cvFireDetected = true;
     //split message by commas
@@ -304,11 +311,12 @@ void readCVMessage(String message) {
 }
 
 
-////////////// THERMAL VERIFICATION + SENSOR FUSION/////////////
+// THERMAL VERIFICATION + SENSOR FUSION
+// SEQ 06 - Verify fire with CV + thermal
+// Combines fresh CV confidence with thermal sensor data
+// to determine whether the possible fire is genuine.
 void verifyTarget() {
-
   // Serial.println("DEBUG 1: Entered verifyTarget()");
-  
   if (!thermalSensorOK) {    // Cannot perform sensor fusion without IR sensor
     fireConfidence = 0.0;   // if IR is 0
     state = MONITORING;
@@ -318,7 +326,7 @@ void verifyTarget() {
     return;
   }
 
-  // Read thermal sensor
+  // Read ambient and target temperatures
   ambientTemp = mlx.readAmbientTempC();  // temperature of the MLX90614 sensor chip itself
   objectTemp = mlx.readObjectTempC(); // the temperature of the surface/object it is pointing at
   tempDifference = objectTemp - ambientTemp; // how hot the possible fire is
@@ -328,78 +336,43 @@ void verifyTarget() {
   Serial.print(objectTemp);
   Serial.println(" C");
 
-
-///// to change later to better calculation////
-  if (tempDifference >= TEMP_DIFFERENCE_THRESHOLD) { // if > 50 deg C then 100% chance of fire
+  // Convert thermal result into a simple confidence value
+  if (tempDifference >= TEMP_DIFFERENCE_THRESHOLD) { // if > threshold deg C then 100% chance of fire
     thermalConfidence = 1.0;
   }
   else {
     thermalConfidence = 0.0;
   }
 
-// TEMPORARY sensor fusion-  Equal weighting: 50% CV  50% thermal
+  // TEMPORARY sensor fusion-  Equal weighting: 50% CV  50% thermal
   fireConfidence = (cvConfidence * 0.5) + (thermalConfidence * 0.5);
 
-
-  // Debugging - temp
+  // Debugging 
   Serial.print("CV Confidence: ");
   Serial.println(cvConfidence);
-
   Serial.print("Object Temp: ");
   Serial.println(objectTemp);
-
   Serial.print("Ambient Temp: ");
   Serial.println(ambientTemp);
-
   Serial.print("Object Temp - Ambient Temp = ");
   Serial.println(tempDifference);
-
   Serial.print("Thermal Confidence: ");
   Serial.println(thermalConfidence);
-
   Serial.print("Fire Confidence: ");
   Serial.println(fireConfidence);
 
 
-
-// Final fire decision
+// SEQ 07B - FIRE CONFIRMED
   if (fireConfidence >= 0.70) {
     state = FIRE_CONFIRMED;
     Serial.println("FIRE_CONFIRMED");
   }
+// SEQ 07A - FIRE NOT CONFIRMED
   else {
     state = MONITORING;
     cvFireDetected = false;
     cvConfidence = 0.0;
     Serial.println("FIRE_NOT_CONFIRMED");
-
-    delay(1000); // adding delay because camera detecting fire faster than A1 polling
+    delay(1000); // Prevent CV detecting the same target before A1 polls the result
   }
 }
-
-
-
-    // TESTING ARDUINO THROUGH PYTHON
-    // Tell Python that the CV data was successfully received and parsed by the Arduino
-    // Serial.println("CV_DATA_OK");
-
-
-    // // TESTING ARDUINO ONLY - print parsed values back to terminal
-    // Serial.println("--- CV DATA RECEIVED ---");
-    // Serial.print("Fire detected: ");
-    // Serial.println(cvFireDetected);
-
-    // Serial.print("CV Confidence: ");
-    // Serial.println(cvConfidence);
-
-    // Serial.print("Centre X: ");
-    // Serial.println(centreX);
-
-    // Serial.print("Centre Y: ");
-    // Serial.println(centreY);
-
-    // Serial.print("Fire Pixels: ");
-    // Serial.println(firePixels);
-
-
-

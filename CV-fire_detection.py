@@ -1,10 +1,63 @@
-# Computer Vision Script for Automatic FIREWATCH 
-# ICTE4005 Robotics Assignment - Group 5
-# Saf, Annie, Devlin - Curtin University 2026
-# Read CV-README.md for set up advice
-
-
-# Arduino 2 → USB Serial → Python → YOLO → Camera 
+# =================================================================
+# INDUSTRIAL AUTOMATED FIREWATCH (IAF)
+# ICTE4005 Robotics Project - Group 5
+# Curtin University, 2026
+#
+# Team:
+# Saf Flatters, Annie (Annabelle) Lewkowski, Devlin MacGlip
+#
+# MODULE:
+# Python Computer Vision (CV) - Perception
+#
+# PURPOSE:
+# The Python CV module provides RGB fire detection for A2 (Perception).
+# - Captures live video from the webcam
+# - Runs the trained YOLO fire detection model
+# - Detects possible fires and calculates CV confidence
+# - Calculates target X/Y coordinates and fire bounding-box area
+# - Sends fire detection data to A2 via USB Serial
+# - Starts and stops CV monitoring in response to commands from A2
+#
+# SETUP:
+# 1. Connect the webcam and Arduino 2 (A2) to the laptop.
+# 2. Open a terminal in the project folder.
+# 3. Activate the Python virtual environment.
+# 4. Ensure OpenCV, Ultralytics and pySerial are installed.
+# 5. Ensure the trained YOLO model "best.pt" is in the project folder.
+# 6. Check the Arduino COM port and update port="COM4" below if required.
+# 7. Upload/start the A2 Perception Arduino code.
+# 8. Run this script: python CV-fire_detection.py
+# 9. Press Q in the webcam window to stop the program.
+#
+# COMMUNICATION:
+#
+# USB Serial:
+# Laptop/Python <-> Arduino 2 (A2)
+# Serial baud rate -> 115200
+# Current port -> COM4
+#
+# Computer Vision:
+# Webcam -> OpenCV -> YOLO -> Python -> A2
+# YOLO model -> best.pt
+# CV detection threshold -> 0.50
+#
+#
+# SYSTEM SEQUENCE:
+#
+# SEQ 01 - System startup / STANDBY
+# SEQ 02 - Operator starts HOT WORK
+# SEQ 03 - Monitor for fire
+# SEQ 04 - Possible fire detected
+# SEQ 05 - Aim robot at target
+# SEQ 06 - Verify fire with CV + thermal
+# SEQ 07A - Fire NOT confirmed
+# SEQ 07B - Fire CONFIRMED
+# SEQ 08 - Suppress fire
+# SEQ 09 - Stop suppression and recheck
+# SEQ 10 - Return robot to PARKED
+# SEQ 11 - Resume HOT WORK monitoring
+#
+# =================================================================
 
 import cv2
 from ultralytics import YOLO
@@ -12,13 +65,15 @@ import serial  # to be able to send to Arduino through USB
 import time
 # import threading # allows typing test commands while CV runs ()
 
-#### ARDUNIO
-# Connect to Perception Arduino through USB serial.
-# CHANGE "COM3" to whatever COM port Arduino uses.
-# The baud rate MUST match Serial.begin(115200) on Arduino.
+
+
+# ARDUINO 2 SERIAL CONNECTION
+# SEQ 01 - SYSTEM STARTUP / STANDBY
+# Connect Python to the Perception Arduino through USB Serial.
+# The baud rate must match Serial.begin(115200) on A2.
 try:
     arduino = serial.Serial(
-        port="COM4",
+        port="COM4",  ## This must match Arduino USB Serial
         baudrate=115200,
         timeout=1
     )
@@ -47,13 +102,13 @@ except serial.SerialException:
 
 
 
-#### COMPUTER VISION
+# COMPUTER VISION SETUP
+# SEQ 01 - SYSTEM STARTUP / STANDBY
 
-# 1. Load trained fire detection model
+# Load trained YOLO fire detection model
 model = YOLO("best.pt")
 
-
-# 2. Open webcam
+# Open webcam
 cap = cv2.VideoCapture(0)
 
 if not cap.isOpened():
@@ -71,7 +126,10 @@ cv_active = False
 #     )
 #     command_thread.start()
 
-# 3. Read webcam continuously
+
+
+# MAIN COMPUTER VISION LOOP
+# Continuously checks A2 commands, reads the webcam and runs fire detection.
 while True:
 
     # Check for commands from Arduino 2
@@ -79,6 +137,8 @@ while True:
         response = arduino.readline().decode().strip()
         print(f"Arduino: {response}")
 
+# SEQ 02 + 03 - START HOT WORK / MONITOR FOR FIRE
+        # A2 has entered MONITORING and tells Python to start CV.
         if response == "START_CV":
             cv_active = True
             print("\n==============================")
@@ -86,7 +146,8 @@ while True:
             print("CV ACTIVE - looking for fire")
             print("==============================\n")
 
-# COMMENT OUT WHEN A1 IS UP
+# SEQ 04 - POSSIBLE FIRE DETECTED
+        # A2 has accepted the CV detection and sent the target to A1.
         elif response == "POSSIBLE_FIRE_DETECTED":
             print("\n========================================")
             print("CV: POSSIBLE FIRE DETECTED")
@@ -99,24 +160,29 @@ while True:
             print("  Waiting for robot to aim")
             print("========================================\n")
 
+# SEQ 06 - VERIFY FIRE WITH CV + THERMAL
+        # A3 has aimed at the target and A2 requests fresh CV data.
         elif response == "VERIFY_CV":
             print("\n==============================")
             print("STATE: VERIFYING")
             print("Getting fresh CV + thermal reading")
             print("==============================\n")
 
+# SEQ 07A - FIRE NOT CONFIRMED
         elif response == "FIRE_NOT_CONFIRMED":
             print("\n==============================")
             print("STATE: FIRE NOT CONFIRMED")
             print("Returning to monitoring")
             print("==============================\n")
 
+# SEQ 01 / 10 - STOP CV
+        # CV is stopped while the system is in STANDBY or A3 returns to PARKED.
         elif response == "STOP_CV":
             cv_active = False
             print("CV monitoring stopped")
 
 
-
+    # READ WEBCAM FRAME
     ret, frame = cap.read()
     if not ret:
         print("Could not read frame")
@@ -125,8 +191,8 @@ while True:
     # height, width = frame.shape[:2]
     # print(f"CAMERA FRAME: {width} x {height}")
 
-    # 4. Run trained model
-    # Only run fire detection while HOT_WORK mode is active
+# SEQ 03 - MONITOR FOR FIRE
+    # Only run YOLO fire detection while HOT WORK mode is active.
     if cv_active:
         results = model(
             frame,
@@ -136,18 +202,19 @@ while True:
         fire_detected = False
 
 
-        # 5. Read detections
+        # READ YOLO DETECTIONS
         for result in results:
             for box in result.boxes:
                 class_id = int(box.cls[0])
                 class_name = model.names[class_id]
                 confidence = float(box.conf[0])
 
-                # Only process FIRE detections
+# SEQ 04 - POSSIBLE FIRE DETECTION
+                # Only process detections classified as fire.
                 if class_name.lower() == "fire":
                     fire_detected = True
 
-                    # Get bounding box
+                    # Get fire bounding box
                     x1, y1, x2, y2 = map(
                         int,
                         box.xyxy[0]
@@ -168,15 +235,14 @@ while True:
 
                     fire_pixels = width * height
 
-# COMMENT BACK IN WHEN A1 IS UP                    # Outputs
-                    # Laptop printed output
+# SEQ 04 - SEND POSSIBLE FIRE DATA TO A2
+                    # Send CV confidence, target coordinates and area.
                     # print(
                     #     f"FIRE | "
                     #     f"Confidence: {confidence:.2f} | "
                     #     f"Pixels: {fire_pixels} | "
                     #     f"Centre: ({centre_x}, {centre_y})"
                     # )
-                    # Send to Arduino output
                     message = (
                         f"FIRE,"
                         f"{confidence:.2f},"
@@ -187,7 +253,7 @@ while True:
                     if arduino is not None:    
                         arduino.write(message.encode())
 
-                    # Draw detection box
+                    # Draw fire detection box
                     cv2.rectangle(
                         frame,
                         (x1, y1),
@@ -196,7 +262,7 @@ while True:
                         2
                     )
 
-                    # Draw centre point
+                    # Draw fire centre point
                     cv2.circle(
                         frame,
                         (centre_x, centre_y),
@@ -205,7 +271,7 @@ while True:
                         -1
                     )
 
-                    # Detection label
+                    # Draw detection label
                     cv2.putText(
                         frame,
                         f"FIRE {confidence:.0%}",
@@ -215,8 +281,11 @@ while True:
                         (0, 0, 255),
                         2
                     )
-# COMMENT BACK IN WHEN A1 IS UP
-        # 6. No fire
+
+
+
+# SEQ 03 - NO FIRE DETECTED
+        # Tell A2 when YOLO does not detect fire in the current frame.
         if not fire_detected:
             # Laptop printed output
             # print("No fire")
@@ -225,7 +294,8 @@ while True:
                 # Send to Arduino output
                 arduino.write(b"NO_FIRE\n")
 
-    # 8. Show webcam
+            
+    # DISPLAY WEBCAM
     cv2.imshow(
         "FireWatch CV",
         frame
@@ -235,7 +305,8 @@ while True:
     if cv2.waitKey(1) & 0xFF == ord("q"):
         break
 
-
+# SHUTDOWN
+# Release the webcam and close the Serial connection.
 cap.release()
 cv2.destroyAllWindows()
 if arduino is not None:    
