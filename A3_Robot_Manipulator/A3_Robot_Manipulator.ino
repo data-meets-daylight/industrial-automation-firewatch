@@ -1,59 +1,92 @@
 /*
-  Firewatch Arduino 3 Robot Manipulator - Devlin
+=================================================================
+INDUSTRIAL AUTOMATED FIREWATCH (IAF)
+ICTE4005 Robotics Project - Group 5
+Curtin University, 2026
 
-  Role of A3:
-  - controls the pan and tilt servos
-  - interprets fire coordinates sent from A1 into servo angles
-  - centres the webcam onto the fire
-  - activates the fire suppression system (mock water pump)
+Team:
+Saf Flatters, Annie (Annabelle) Lewkowski, Devlin MacGlip
 
-  ============================================================
-  SERVO MOUNT TESTING - 6 OCTOBER 2026
-  ============================================================
+MODULE:
+Arduino 3 (A3) - Robot Manipulator
 
-  Duinotech 2-servo pan/tilt mount was physically tested
-  before integrating it into the Firewatch system.
+PURPOSE:
+A3 controls the movement and fire suppression components of the IAF system.
+- Controls the pan and tilt servos
+- Receives fire target coordinates from A1 (Mission Control)
+- Converts target coordinates into servo angles
+- Centres the webcam on the detected fire
+- Activates the fire suppression system (mock water pump)
+- Reports robot status back to A1
 
-  PAN SERVO:
-  - Signal pin: D9
-  - Tested safe minimum: 20 degrees
-  - Tested safe maximum: 175 degrees
-  - Physical centre / parked position: 100 degrees
 
-  TILT SERVO:
-  - Signal pin: D10
-  - Tested safe minimum: 105 degrees
-  - Tested safe maximum: 180 degrees
-  - Physical centre / parked position: 155 degrees
+WIRING:
 
-  IMPORTANT:
-  - Servo commands are constrained to these tested limits.
-  - Do not change limits to 0-180 without physically checking mount.
-  - Servo movement is limited to 1 degree per step to prevent
-    sudden/violent movement.
-  - PAN and TILT angles correspond directly to the physical
-    servo angles established during testing.
+I2C Communication:
+SDA (A4) -> A1 SDA
+SCL (A5) -> A1 SCL
+GND      -> Common GND between all Arduino boards
 
-  ============================================================
-  SETUP AND WIRING
-  ============================================================
+Pan Servo:
+Signal -> Pin 9
 
-  I2C:
-  - SDA -> A4
-  - SCL -> A5
-  - GND connected between boards
+Tilt Servo:
+Signal -> Pin 10
 
-  Outputs:
-  - PAN SERVO  -> PIN 9
-  - TILT SERVO -> PIN 10
-  - LASER      -> PIN 7
-  - WATER PUMP LED -> PIN 8
+Laser:
+Signal -> Pin 7
 
-  I2C comms:
-  - Home position = PARKED
-  - Target position = READY
-  - Suppression system on = SUPPRESSING
-  - Suppression system off = SUPPRESSION COMPLETE
+Water Pump Indicator:
+LED -> Pin 8
+
+
+SERVO MOUNT LIMITS:
+
+Pan Servo:
+Safe minimum     = 20 degrees
+Safe maximum     = 175 degrees
+Parked position  = 100 degrees
+
+Tilt Servo:
+Safe minimum     = 105 degrees
+Safe maximum     = 180 degrees
+Parked position  = 155 degrees
+
+IMPORTANT:
+- Servo limits were physically tested on the Duinotech pan/tilt mount
+  on 6 October 2026.
+- Do not change the servo limits to 0-180 degrees without physically
+  checking the mount.
+- Servo movement is limited to 1 degree per step to prevent sudden
+  or violent movement.
+- PAN and TILT angles correspond to the physical servo angles
+  established during testing.
+
+
+A3 SYSTEM STATUS:
+
+PARKED               = Robot at home position
+READY                = Robot aimed at target position
+SUPPRESSING          = Suppression system active
+SUPPRESSION_COMPLETE = Suppression system stopped
+
+
+SYSTEM SEQUENCE:
+
+SEQ 01 - System startup / STANDBY
+SEQ 02 - Operator starts HOT WORK
+SEQ 03 - Monitor for fire
+SEQ 04 - Possible fire detected
+SEQ 05 - Aim robot at target
+SEQ 06 - Verify fire with CV + thermal
+SEQ 07A - Fire NOT confirmed
+SEQ 07B - Fire CONFIRMED
+SEQ 08 - Suppress fire
+SEQ 09 - Stop suppression and recheck
+SEQ 10 - Return robot to PARKED
+SEQ 11 - Resume HOT WORK monitoring
+
+=================================================================
 */
 
 

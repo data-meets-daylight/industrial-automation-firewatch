@@ -1,14 +1,59 @@
-// Perception Arduino (Arduino 2) Sketch for Automatic FIREWATCH
-// ICTE4005 Robotics Assignment - Group 5
-// Saf, Annie, Devlin - Curtin University 2026
+/*
+=================================================================
+INDUSTRIAL AUTOMATED FIREWATCH (IAF)
+ICTE4005 Robotics Project - Group 5
+Curtin University, 2026
 
-// Purpose: 
-// 1. Receives/sends commands to Mission Controller (Arduino 1) via I2C
-// 2. Receives fire detection information from Python CV via USB Serial
-// 3. Reads MLX90614 IR temperature sensor
-// 4. Performs CV + thermal sensor fusion
-// 5. Sends target/fire information to Mission Controller
+Team:
+Saf Flatters, Annie (Annabelle) Lewkowski, Devlin MacGlip
 
+MODULE:
+Arduino 2 (A2) - Perception
+
+PURPOSE:
+A2 manages the perception system for the IAF.
+- Communicates with A1 (Mission Control) via I2C
+- Receives fire detection information from Python CV via USB Serial
+- Reads the MLX90614 IR temperature sensor
+- Performs CV + thermal sensor fusion to verify possible fires
+- Sends target coordinates and fire status to A1
+
+WIRING:
+
+I2C Communication:
+SDA (A4) -> A1 SDA
+SCL (A5) -> A1 SCL
+GND      -> Common GND between all Arduino boards
+
+MLX90614 IR Temperature Sensor:
+SDA -> A4
+SCL -> A5
+VCC -> 5V
+GND -> GND
+
+Computer Vision:
+A2 -> Laptop via USB
+Serial baud rate -> 115200
+Python script -> CV-fire_detection.py
+
+
+SYSTEM SEQUENCE:
+
+SEQ 01 - System startup / STANDBY
+SEQ 02 - Operator starts HOT WORK
+SEQ 03 - Monitor for fire
+SEQ 04 - Possible fire detected
+SEQ 05 - Aim robot at target
+SEQ 06 - Verify fire with CV + thermal
+SEQ 07A - Fire NOT confirmed
+SEQ 07B - Fire CONFIRMED
+SEQ 08 - Suppress fire
+SEQ 09 - Stop suppression and recheck
+SEQ 10 - Return robot to PARKED
+SEQ 11 - Resume HOT WORK monitoring
+
+=================================================================
+*/
 
 // test mode switch for when Mission Control Arduino 1 is not connected
 const bool TEST_MODE = false;
