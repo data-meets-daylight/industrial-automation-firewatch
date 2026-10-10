@@ -31,9 +31,13 @@ Uses INPUT_PULLUP, so no external resistor is required.
 First press from STANDBY -> HOT_WORK
 Next press from HOT_WORK -> STANDBY
 
+
+(draft)
 Status Lights:
+Pin 7 -> Hotwork Mode Green
 Pin 8 -> Status light*********
 Pin 9 -> Status light*********
+
 
 Alarm:
 Alarm -> Pin TBC*******
@@ -126,10 +130,11 @@ SystemState currentState = STANDBY;
 
 // PINS
 const int PIN_HOTWORK_BUTTON = 6;
-const int PIN_PUMP           = 7;
-const int PIN_RED_LED        = 8; // *****Red + Yellow = confirmed fire / suppression response
-const int PIN_YELLOW_LED     = 9; // *****Yellow = HOT WORK / system activity
-const int PIN_ALARM          = 10;
+//const int PIN_PUMP       = 10; // blue led replacing water 
+const int PIN_GREEN_LED      = 7; // green is hotworks mode on 
+const int PIN_RED_LED        = 8; // Red = Fire confirmed
+const int PIN_YELLOW_LED     = 9; // Yellow = fire detected 
+const int PIN_ALARM          = 11;
 
 // BUTTON VARIABLES for SEQ 1 - startup / standby OR SEQ 2 - start hot work
 bool lastButtonState = HIGH;
@@ -144,7 +149,8 @@ const unsigned long STEP_TIMEOUT     = 10000;  // 10 second state timeout
 const byte MAX_MISSED_REPLIES = 3;
 
 // ALARM TONES ****
-const int FIRE_ALARM_TONE  = 2000;  
+const int FIRE_ALARM_TONE  = 2000;
+const int FIRE_ALARM_TONE_UP = 4000; 
 const int FAULT_ALARM_TONE = 800;
 
 // SERIAL PRINTING
@@ -158,6 +164,7 @@ unsigned long lastPollTime       = 0;
 unsigned long lastCountdownPrint = 0;
 int alarmTone        = 0;
 int alarmTonePlaying = 0;
+
 byte missedReplies     = 0;
 byte suppressionCycles = 0;
 bool recheckVerifySent = false;
@@ -183,7 +190,8 @@ void setup() {
   Wire.setWireTimeout(25000, true);
 
   // Set output pins
-  pinMode(PIN_PUMP, OUTPUT);
+  //pinMode(PIN_PUMP, OUTPUT);
+  pinMode(PIN_GREEN_LED, OUTPUT);
   pinMode(PIN_RED_LED, OUTPUT);
   pinMode(PIN_YELLOW_LED, OUTPUT);
   pinMode(PIN_ALARM, OUTPUT);
@@ -192,7 +200,8 @@ void setup() {
   pinMode(PIN_HOTWORK_BUTTON, INPUT_PULLUP);
 
   // Make sure outputs are OFF at startup
-  digitalWrite(PIN_PUMP, LOW);
+  //digitalWrite(PIN_PUMP, LOW);
+  digitalWrite(PIN_GREEN_LED, LOW);
   digitalWrite(PIN_RED_LED, LOW);
   digitalWrite(PIN_YELLOW_LED, LOW);
 
@@ -351,7 +360,7 @@ void changeState(SystemState newState) {
 // SEQ 01 - SYSTEM STANDBY
     // Stop outputs and tell A2 and A3 to return to STANDBY.
     case STANDBY:
-      digitalWrite(PIN_PUMP, LOW);
+      //digitalWrite(PIN_PUMP, LOW);
       alarmTone = 0;
       suppressionCycles = 0;
       sendCommand(A3_ADDR, CMD_A3_STANDBY);
@@ -361,7 +370,7 @@ void changeState(SystemState newState) {
 // SEQ 02 - START HOT WORK
     // Start monitoring by placing A2 in HOT_WORK. A3 remains parked.
     case HOT_WORK:
-      digitalWrite(PIN_PUMP, HIGH);
+      //digitalWrite(PIN_PUMP, HIGH);
       alarmTone = 0;
       suppressionCycles = 0;
       sendCommand(A3_ADDR, CMD_A3_STANDBY);
@@ -451,7 +460,7 @@ void changeState(SystemState newState) {
 // FAULT - SAFE STATE
     // Stop the system, sound the fault alarm and place A2/A3 in STANDBY.
     case FAULT:
-      digitalWrite(PIN_PUMP, LOW);
+      //digitalWrite(PIN_PUMP, LOW);
       alarmTone = FAULT_ALARM_TONE;
       sendCommand(A3_ADDR, CMD_A3_STANDBY);
       sendCommand(A2_ADDR, CMD_A2_STANDBY);
@@ -956,13 +965,15 @@ void updateBeaconAndAlarm() {
     // No status lights
     case STANDBY:
     case FAULT:
+      digitalWrite(PIN_GREEN_LED, LOW);
       digitalWrite(PIN_YELLOW_LED, LOW);
       digitalWrite(PIN_RED_LED, LOW);
       break;
 
-// SEQ 02 + 03 - HOT WORK active - steady yellow
+// SEQ 02 + 03 - HOT WORK active - steady green
     case HOT_WORK:
-      digitalWrite(PIN_YELLOW_LED, HIGH);
+      digitalWrite(PIN_GREEN_LED, HIGH);
+      digitalWrite(PIN_YELLOW_LED, LOW);
       digitalWrite(PIN_RED_LED, LOW);
       break;
 
@@ -971,6 +982,7 @@ void updateBeaconAndAlarm() {
     case VERIFYING:
     case RETURNING_TO_PARK:
       digitalWrite(PIN_YELLOW_LED, flashOn);
+      digitalWrite(PIN_GREEN_LED, LOW);
       digitalWrite(PIN_RED_LED, LOW);
       break;
 
@@ -978,8 +990,9 @@ void updateBeaconAndAlarm() {
     case FIRE_CONFIRMED:
     case SUPPRESSING:
     case RECHECK:
-      digitalWrite(PIN_YELLOW_LED, flashOn);
+      digitalWrite(PIN_YELLOW_LED, LOW);
       digitalWrite(PIN_RED_LED, flashOn);
+      digitalWrite(PIN_GREEN_LED, LOW);
       break;
     }
 
