@@ -998,14 +998,12 @@ void updateBeaconAndAlarm() {
 
 // SEQ 07B + 08 + 09 - Fire alarm active during confirmed fire response
     // Update alarm only when the requested tone changes
-    if (alarmTone != alarmTonePlaying) {
-      if (alarmTone == 0) {
-        noTone(PIN_ALARM);
-      }
-      else {
-        tone(PIN_ALARM, alarmTone);
-      }
-      alarmTonePlaying = alarmTone;
+if (alarmTone == 0) {
+  noTone(PIN_ALARM);
+  } else if (flashOn) {
+    tone(PIN_ALARM, alarmTone);
+    } else {
+      noTone(PIN_ALARM);
     }
   }
 
