@@ -73,7 +73,7 @@ import time
 # The baud rate must match Serial.begin(115200) on A2.
 try:
     arduino = serial.Serial(
-        port="COM4",  ## This must match Arduino USB Serial
+        port="COM6",  ## This must match Arduino USB Serial
         baudrate=115200,
         timeout=1
     )
@@ -196,7 +196,7 @@ while True:
     if cv_active:
         results = model(
             frame,
-            conf=0.50,
+            conf=0.30,
             verbose=False
         )
         fire_detected = False
